@@ -6,9 +6,25 @@ Moralis.serverURL = 'https://t4jve9pvn40e.grandmoralis.com:2053/server';
 // enable moralis and connect to web3
 init = async () => {
   hideElement(userInfo);
+  hideElement(createItemForm)
   window.web3 = await Moralis.web3.enable();
   initUser();
 };
+
+initUser = async () => {
+  if (await Moralis.User.current()) {
+    hideElement(userConnectButton);
+    showElement(userProfileButton);
+    showElement(openCreateItemButton);
+  } else {
+    showElement(userConnectButton);
+    hideElement(userProfileButton);
+    hideElement(openCreateItemButton);
+  }
+};
+
+hideElement = (element) => element.style.display = 'none';
+showElement = (element) => element.style.display = 'block';
 
 login = async () => {
   try {
@@ -59,7 +75,7 @@ saveUserInfo = async () => {
 
 
   if (userAvatarFile.files.length > 0) {
-    const avatar = new Moralis.File('avatar.jpg', userAvatarFile.files[0]);
+    const avatar = new Moralis.File('avatar.jpeg', userAvatarFile.files[0]);
     user.set('avatar', avatar);
   }
 
@@ -67,18 +83,6 @@ saveUserInfo = async () => {
   alert('user info saved successfully');
   openUserInfo();
 };
-
-initUser = async () => {
-  if (await Moralis.User.current()) {
-    hideElement(userConnectButton);
-    showElement(userProfileButton);
-  } else {
-    showElement(userConnectButton);
-    hideElement(userProfileButton);
-  }
-};
-hideElement = (element) => element.style.display = 'none';
-showElement = (element) => element.style.display = 'block';
 
 const userConnectButton = document.getElementById('btnConnect');
 userConnectButton.onclick = login;
@@ -90,10 +94,23 @@ const userInfo = document.getElementById('userInfo');
 const userUsernameField = document.getElementById('txtUsername');
 const userEmailField = document.getElementById('txtEmail');
 const userAvatarImg = document.getElementById('imgAvatar');
-const userAvatarFile = document.getElementById('fileavatar');
+const userAvatarFile = document.getElementById('fileAvatar');
 
 document.getElementById('btnCloseUserInfo').onclick = () => hideElement(userInfo);
 document.getElementById('btnLogout').onclick = logOut;
 document.getElementById('btnSaveUserInfo').onclick = saveUserInfo;
+
+const createItemForm = document.getElementById('createItem');
+
+const creatItemNameField = document.getElementById('txtCreateItemName');
+const createItemDescription = document.getElementById('txtCreateItemDescription');
+const createItemPriceField = document.getElementById('numCreateItemPrice');
+const createItemStatusField = document.getElementById('selectCreateItemStatus');
+const createItemFile = document.getElementById('fileCreateItemFile');
+
+const openCreateItemButton = document.getElementById('btnOpenCreateItem');
+openCreateItemButton.onclick = () => showElement(createItemForm)
+document.getElementById('btnCloseCreateItem').onclick = () => hideElement(createItemForm);
+
 
 init();
