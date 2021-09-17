@@ -6,11 +6,11 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 
 contract MorarableToken is ERC721 {
     using Counters for Counters.Counter;
-    Counters.Counter private  _tokenIds;
+    Counters.Counter private _tokenIds;
 
-    constructor() ERC721("MorarableToken","Mora") {}
+    constructor () ERC721("MorarableToken", "MORA"){}
 
-    struct Item{
+    struct Item {
         uint256 id;
         address creator;
         string uri;
@@ -18,7 +18,7 @@ contract MorarableToken is ERC721 {
 
     mapping (uint256 => Item) public Items;
 
-    function CreateItem(string memory uri) public returns (uint256) {
+    function createItem(string memory uri) public returns (uint256){
         _tokenIds.increment();
         uint256 newItemId = _tokenIds.current();
         _safeMint(msg.sender, newItemId);
@@ -26,5 +26,11 @@ contract MorarableToken is ERC721 {
         Items[newItemId] = Item(newItemId, msg.sender, uri);
 
         return newItemId;
+    }
+
+    function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        require(_exists(tokenId), "ERC721Metadata: URI query for nonexistent token");
+
+       return Items[tokenId].uri;
     }
 }

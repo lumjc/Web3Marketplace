@@ -1,13 +1,20 @@
-/* eslint-disable max-len */
 /* eslint-disable require-jsdoc */
+/* eslint-disable max-len */
+
 Moralis.initialize('l8T3PYmGe5rBWzNswX90jSlbQ9p7kjxpznHHjPBO');
 Moralis.serverURL = 'https://t4jve9pvn40e.grandmoralis.com:2053/server';
+
+
+const TOKEN_CONTRACT_ADDRESS = '0xaB7014fDC49A092F2C22A3F92A94de44A934aba1';
+hideElement = (element) => element.style.display = 'none';
+showElement = (element) => element.style.display = 'block';
 
 // enable moralis and connect to web3
 init = async () => {
   hideElement(userInfo);
   hideElement(createItemForm);
-  window.ethereum = await Moralis.web3.enable();
+  window.web3 = await Moralis.Web3.enable();
+  window.tokenContract = web3.eth.contract(tokenContractAbi).at(TOKEN_CONTRACT_ADDRESS);
   initUser();
 };
 
@@ -23,8 +30,6 @@ initUser = async () => {
   }
 };
 
-hideElement = (element) => element.style.display = 'none';
-showElement = (element) => element.style.display = 'block';
 
 login = async () => {
   try {
@@ -102,8 +107,7 @@ createItem = async () => {
   const metadata = {
     name: createItemNameField.value,
     description: createItemDescriptionField.value,
-    nftFilePath: nftFilePath,
-    nftFileHash: nftFileHash,
+    image: nftFilePath,
   };
 
   const nftFileMetadataFile = new Moralis.File('metadata.json', {base64: btoa(JSON.stringify(metadata))});
@@ -112,19 +116,30 @@ createItem = async () => {
   const nftFileMetadataFilePath = nftFileMetadataFile.ipfs();
   const nftFileMetadataFileHash = nftFileMetadataFile.hash();
 
-  const Item = Moralis.Object.extend("Item");
+  const nftId = await mintNft(nftFileMetadataFilePath);
+
+  const Item = Moralis.Object.extend('Item');
 
   const item = new Item();
-  item.set('name', createItemNameField.value)
-  item.set('description', createItemDescriptionField.value)
-  item.set('nftFilePath', nftFilePath)
-  item.set('nftFileHash', nftFileHash)
-  item.set('MetadataFilePath', nftFileMetadataFilePath)
-  item.set('MetadataFileHash', nftFileMetadataFileHash)
-  await item.save()
-  console.log(item)
-
+  item.set('name', createItemNameField.value);
+  item.set('description', createItemDescriptionField.value);
+  item.set('nftFilePath', nftFilePath);
+  item.set('nftFileHash', nftFileHash);
+  item.set('MetadataFilePath', nftFileMetadataFilePath);
+  item.set('MetadataFileHash', nftFileMetadataFileHash);
+  item.set('nftId', nftId);
+  item.set('nftContractAddress', TOKEN_CONTRACT_ADDRESS);
+  await item.save();
+  console.log(item);
 };
+
+mintNft = async (metadataUrl) => {
+    console.log(mintNft)
+    const receipt = await tokenContract.methods.createItem(metadataUrl).send({from: ethereum.selectedAddress});
+    console.log(receipt);
+    return receipt.events.Transfer.returnValues.tokenId;
+}
+
 
 // Nav Bar
 const userConnectButton = document.getElementById('btnConnect');

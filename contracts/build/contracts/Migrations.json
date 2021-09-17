@@ -663,7 +663,6 @@
                       {
                         "name": "headStart",
                         "nodeType": "YulIdentifier",
-                        "src": "1528:9:12"
                       },
                       {
                         "kind": "number",
