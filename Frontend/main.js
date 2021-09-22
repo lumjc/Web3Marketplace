@@ -4,7 +4,8 @@ Moralis.initialize('qbfQUUqYq1RAdHnPZTnlEemxfGaBmOGOE6DzRNKA');
 Moralis.serverURL = 'https://uyijtrqipgcq.grandmoralis.com:2053/server';
 
 
-const TOKEN_CONTRACT_ADDRESS = '0x9db2528041F211d825412C8F2B2aC443b2c4fDbD';
+const TOKEN_CONTRACT_ADDRESS = '0x24088142577870A60ab7DAB7283884c6F584F195';
+const MARKETPLACE_CONTRACT_ADDRESS = '0x393ab4C99eDC091a4c41244940266610245365FE';
 hideElement = (element) => element.style.display = 'none';
 showElement = (element) => element.style.display = 'block';
 
@@ -14,9 +15,11 @@ init = async () => {
   hideElement(userItemsSection);
   hideElement(userInfo);
   hideElement(createItemForm);
-  web3 = await Moralis.enable();
+  window.web3 = await Moralis.enable();
   window.tokenContract = new web3.eth.Contract(tokenContractAbi, TOKEN_CONTRACT_ADDRESS);
+  window.marketplaceContract = new web3.eth.Contract(marketplaceContractAbi, MARKETPLACE_CONTRACT_ADDRESS);
   initUser();
+  loadItems();
 };
 
 initUser = async () => {
@@ -135,10 +138,24 @@ createItem = async () => {
   item.set('nftContractAddress', TOKEN_CONTRACT_ADDRESS);
   await item.save();
   console.log(item);
+
+  user = await Moralis.User.current();
+  const userAddress = user.get('ethAddress');
+
+  switch (createItemStatusField.value) {
+    case '0':
+      return;
+    case '1':
+      await ensureMarketplaceIsApproved(nftId, TOKEN_CONTRACT_ADDRESS);
+      await window.marketplaceContract.methods.addItemToMarket(nftId, TOKEN_CONTRACT_ADDRESS, createItemPriceField.value).send({from: userAddress});
+      break;
+    case '2':
+      alert('Not yet supported');
+      return;
+  }
 };
 
 mintNft = async (metadataUrl) => {
-  console.log(window.tokenContract);
   const receipt = await window.tokenContract.methods.createItem(metadataUrl).send({from: ethereum.selectedAddress});
   console.log(receipt);
   return receipt.events.Transfer.returnValues.tokenId;
@@ -155,8 +172,15 @@ openUserItems = async () => {
 
 loadUserItems = async () => {
   const ownedItems = await Moralis.Cloud.run('getUserItems');
-  ownedItems.forEach(item => {
+  ownedItems.forEach((item) => {
     getAndRenderItemData(item, renderUserItem);
+  });
+};
+
+loadItems = async () => {
+  const items = await Moralis.Cloud.run('getItems');
+  items.forEach((item) => {
+    getAndRenderItemData(item, renderItem);
   });
 };
 
@@ -176,17 +200,44 @@ renderUserItem = (item) => {
   userItems.appendChild(userItem);
 };
 
+renderItem = (item) => {
+  const itemForSale = marketplaceItemTemplate.cloneNode(true);
+  if (item.sellerAvatar) {
+    itemForSale.getElementsByTagName('img')[0].src = item.sellerAvatar.url();
+    itemForSale.getElementsByTagName('img')[0].alt = item.sellerUsername;
+  }
+
+  itemForSale.getElementsByTagName('img')[1].src = item.image;
+  itemForSale.getElementsByTagName('img')[1].alt = item.name;
+  itemForSale.getElementsByTagName('h5')[0].innerText = item.name;
+  itemForSale.getElementsByTagName('p')[0].innerText = item.description;
+
+  itemForSale.getElementsByTagName('button')[0].innerText = `Buy for ${item.askingPrice}`;
+  itemForSale.id = `item-${item.uid}`;
+  itemsForSale.appendChild(itemForSale);
+};
+
+
 getAndRenderItemData = (item, renderFunction) => {
   fetch(item.tokenUri)
       .then((response) => response.json())
       .then((data) => {
-        data.symbol = item.symbol;
-        data.tokenId = item.tokenId;
-        data.tokenAddress = item.tokenAddress;
-        renderFunction(data);
+        item.name = data.name;
+        item.description = data.description;
+        item.image = data.image;
+        renderFunction(item);
       });
 };
 
+ensureMarketplaceIsApproved = async (tokenId, tokenAddress) => {
+  user = await Moralis.User.current();
+  const userAddress = user.get('ethAddress');
+  const contract = new web3.eth.Contract(tokenContractAbi, tokenAddress);
+  const approvedAddress = await contract.methods.getApproved(tokenId).call({from: userAddress});
+  if (approvedAddress != MARKETPLACE_CONTRACT_ADDRESS) {
+    await contract.methods.approve(MARKETPLACE_CONTRACT_ADDRESS, tokenId).send({from: userAddress});
+  }
+};
 
 // Nav Bar
 const userConnectButton = document.getElementById('btnConnect');
@@ -227,8 +278,14 @@ document.getElementById('btnCloseUserItems').onclick = () => hideElement(userIte
 const openUserItemsButton = document.getElementById('btnMyItems');
 openUserItemsButton.onclick = openUserItems;
 
-const userItemTemplate = initTemplate('itemTemplate');
+const userItemTemplate = initTemplate('ItemTemplate');
+const marketplaceItemTemplate = initTemplate('marketplaceItemTemplate');
+
+// Items for Sale
+
+const itemsForSale = document.getElementById('itemsForSale');
 
 
 init();
+
 
