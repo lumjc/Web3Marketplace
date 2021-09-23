@@ -13,14 +13,57 @@ showElement = (element) => element.style.display = 'block';
 // enable moralis and connect to web3
 init = async () => {
   hideElement(userItemsSection);
-  hideElement(userInfo);
   hideElement(createItemForm);
   window.web3 = await Moralis.enable();
   window.tokenContract = new web3.eth.Contract(tokenContractAbi, TOKEN_CONTRACT_ADDRESS);
   window.marketplaceContract = new web3.eth.Contract(marketplaceContractAbi, MARKETPLACE_CONTRACT_ADDRESS);
   initUser();
   loadItems();
+
+  const soldItemsQuery = new Moralis.Query('SoldItems');
+  const soldItemsSubscription = await soldItemsQuery.subscribe();
+  soldItemsSubscription.on('create', onItemSold);
+
+  const itemsAddedQuery = new Moralis.Query('ItemsForSale');
+  const itemsAddedSubscription = await itemsAddedQuery.subscribe();
+  itemsAddedSubscription.on('create', onItemAdded);
 };
+
+onItemSold = async (item) => {
+  const listing = document.getElementById(`item-${item.attributes.uid}`);
+  if (listing) {
+    listing.parentNode.removeChild(listing);
+  }
+  user = await Moralis.User.current();
+  if (user) {
+    const params = {uid: `${item.attributes.uid}`};
+    const soldItem = await Moralis.Cloud.run('getItem', params);
+    if (soldItem) {
+      if (user.get('accounts').includes(item.attributes.buyer)) {
+        getAndRenderItemData(soldItem, renderUserItem);
+      }
+      const userItemListing = document.getElementById(`user-item-${item.tokenObjectId}`);
+      if (userItemListing) userItemListing.parentNode.removeChild(userItemListing);
+    }
+  }
+};
+
+
+onItemAdded = async (item) => {
+  const params = {uid: `${item.attributes.uid}`};
+  const addedItem = await Moralis.Cloud.run('getItem', params);
+  if (addedItem) {
+    user = await Moralis.User.current();
+    if (user) {
+      if (user.get('accounts').includes(addedItem.ownerOf)) {
+        getAndRenderItemData(addedItem, renderUserItem);
+        return;
+      }
+    }
+    getAndRenderItemData(addedItem, renderItem);
+  }
+};
+
 
 initUser = async () => {
   if (await Moralis.User.current()) {
@@ -34,6 +77,7 @@ initUser = async () => {
     hideElement(userProfileButton);
     hideElement(openCreateItemButton);
     hideElement(openUserItemsButton);
+    hideElement(createItemForm);
   }
 };
 
@@ -75,7 +119,7 @@ openUserInfo = async () => {
       hideElement(userAvatarImg);
     }
 
-    showElement(userInfo);
+    $('#userInfo').modal('show');
   } else {
     login();
   }
@@ -109,7 +153,6 @@ createItem = async () => {
   await nftFile.saveIPFS();
 
   const nftFilePath = nftFile.ipfs();
-  const nftFileHash = nftFile.hash();
 
   const metadata = {
     name: createItemNameField.value,
@@ -121,23 +164,9 @@ createItem = async () => {
   await nftFileMetadataFile.saveIPFS();
 
   const nftFileMetadataFilePath = nftFileMetadataFile.ipfs();
-  const nftFileMetadataFileHash = nftFileMetadataFile.hash();
 
   const nftId = await mintNft(nftFileMetadataFilePath);
 
-  const Item = Moralis.Object.extend('Item');
-
-  const item = new Item();
-  item.set('name', createItemNameField.value);
-  item.set('description', createItemDescriptionField.value);
-  item.set('nftFilePath', nftFilePath);
-  item.set('nftFileHash', nftFileHash);
-  item.set('MetadataFilePath', nftFileMetadataFilePath);
-  item.set('MetadataFileHash', nftFileMetadataFileHash);
-  item.set('nftId', nftId);
-  item.set('nftContractAddress', TOKEN_CONTRACT_ADDRESS);
-  await item.save();
-  console.log(item);
 
   user = await Moralis.User.current();
   const userAddress = user.get('ethAddress');
@@ -164,7 +193,7 @@ mintNft = async (metadataUrl) => {
 openUserItems = async () => {
   user = await Moralis.User.current();
   if (user) {
-    showElement(userItemsSection);
+    $('#userItems').modal('show');
   } else {
     login();
   }
@@ -173,13 +202,24 @@ openUserItems = async () => {
 loadUserItems = async () => {
   const ownedItems = await Moralis.Cloud.run('getUserItems');
   ownedItems.forEach((item) => {
+    const userItemListing = document.getElementById(`user-item-${item.tokenObjectId}`);
+    if (userItemListing) return;
     getAndRenderItemData(item, renderUserItem);
   });
 };
 
 loadItems = async () => {
   const items = await Moralis.Cloud.run('getItems');
+  user = await Moralis.User.current();
   items.forEach((item) => {
+    if (user) {
+      if (user.attributes.accounts.includes(item.ownerOf)) {
+        const userItemListing = document.getElementById(`user-item-${item.tokenObjectId}`);
+        if (userItemListing) userItemListing.parentNode.removeChild(userItemListing);
+        getAndRenderItemData(item, renderUserItem);
+        return;
+      }
+    }
     getAndRenderItemData(item, renderItem);
   });
 };
@@ -192,11 +232,29 @@ initTemplate = (id) => {
 };
 
 renderUserItem = (item) => {
+  const userItemListing = document.getElementById(`user-item-${item.tokenObjectId}`);
+  if (userItemListing) return;
+
   const userItem = userItemTemplate.cloneNode(true);
   userItem.getElementsByTagName('img')[0].src = item.image;
   userItem.getElementsByTagName('img')[0].alt = item.name;
   userItem.getElementsByTagName('h5')[0].innerText = item.name;
   userItem.getElementsByTagName('p')[0].innerText = item.description;
+
+  userItem.getElementsByTagName('input')[0].value = item.askingPrice ?? 1;
+  userItem.getElementsByTagName('input')[0].disabled = item.askingPrice > 0;
+  userItem.getElementsByTagName('button')[0].disabled = item.askingPrice > 0;
+  userItem.getElementsByTagName('p')[0].onclick = async () => {
+    user = await Moralis.User.current();
+    if (!user) {
+      login();
+      return;
+    }
+    await ensureMarketplaceIsApproved(item.tokenId, item.tokenAddress);
+    await window.marketplaceContract.methods.addItemToMarket(item.tokenId, item.tokenAddress, userItem.getElementsByTagName('input')[0].value).send({from: user.get('ethAddress')});
+  };
+
+  userItem.id = `user-item-${item.tokenObjectId}`;
   userItems.appendChild(userItem);
 };
 
@@ -205,6 +263,7 @@ renderItem = (item) => {
   if (item.sellerAvatar) {
     itemForSale.getElementsByTagName('img')[0].src = item.sellerAvatar.url();
     itemForSale.getElementsByTagName('img')[0].alt = item.sellerUsername;
+    itemForSale.getElementsByTagName('span')[0].alt = item.sellerUsername;
   }
 
   itemForSale.getElementsByTagName('img')[1].src = item.image;
@@ -213,6 +272,7 @@ renderItem = (item) => {
   itemForSale.getElementsByTagName('p')[0].innerText = item.description;
 
   itemForSale.getElementsByTagName('button')[0].innerText = `Buy for ${item.askingPrice}`;
+  itemForSale.getElementsByTagName('button')[0].onclick = () => buyItem(item);
   itemForSale.id = `item-${item.uid}`;
   itemsForSale.appendChild(itemForSale);
 };
@@ -239,6 +299,15 @@ ensureMarketplaceIsApproved = async (tokenId, tokenAddress) => {
   }
 };
 
+buyItem = async (item) => {
+  user = await Moralis.User.current();
+  if (!user) {
+    login();
+    return;
+  }
+  await window.marketplaceContract.methods.buyItem(item.uid).send({from: user.get('ethAddress'), value: item.askingPrice});
+};
+
 // Nav Bar
 const userConnectButton = document.getElementById('btnConnect');
 userConnectButton.onclick = login;
@@ -247,7 +316,7 @@ const userProfileButton = document.getElementById('btnUserInfo');
 userProfileButton.onclick = openUserInfo;
 
 const openCreateItemButton = document.getElementById('btnOpenCreateItem');
-openCreateItemButton.onclick = () => showElement(createItemForm);
+openCreateItemButton.onclick = () => $('#createItem').modal();
 
 // user profile
 const userInfo = document.getElementById('userInfo');
@@ -262,7 +331,6 @@ document.getElementById('btnSaveUserInfo').onclick = saveUserInfo;
 
 // item creation
 const createItemForm = document.getElementById('createItem');
-
 const createItemNameField = document.getElementById('txtCreateItemName');
 const createItemDescriptionField = document.getElementById('txtCreateItemDescription');
 const createItemPriceField = document.getElementById('numCreateItemPrice');
@@ -278,13 +346,16 @@ document.getElementById('btnCloseUserItems').onclick = () => hideElement(userIte
 const openUserItemsButton = document.getElementById('btnMyItems');
 openUserItemsButton.onclick = openUserItems;
 
-const userItemTemplate = initTemplate('ItemTemplate');
+const userItemTemplate = initTemplate('itemTemplate');
 const marketplaceItemTemplate = initTemplate('marketplaceItemTemplate');
+
 
 // Items for Sale
 
 const itemsForSale = document.getElementById('itemsForSale');
 
+hideElement = (element) => element.style.display = 'none';
+showElement = (element) => element.style.display = 'block';
 
 init();
 
