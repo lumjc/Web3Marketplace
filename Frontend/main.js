@@ -12,7 +12,6 @@ showElement = (element) => element.style.display = 'block';
 
 // enable moralis and connect to web3
 init = async () => {
-  hideElement(userItemsSection);
   hideElement(createItemForm);
   window.web3 = await Moralis.enable();
   window.tokenContract = new web3.eth.Contract(tokenContractAbi, TOKEN_CONTRACT_ADDRESS);
@@ -56,6 +55,8 @@ onItemAdded = async (item) => {
     user = await Moralis.User.current();
     if (user) {
       if (user.get('accounts').includes(addedItem.ownerOf)) {
+        const userItemListing = document.getElementById(`user-item-${item.tokenObjectId}`);
+        if (userItemListing) userItemListing.parentNode.removeChild(userItemListing);
         getAndRenderItemData(addedItem, renderUserItem);
         return;
       }
@@ -244,7 +245,7 @@ renderUserItem = (item) => {
   userItem.getElementsByTagName('input')[0].value = item.askingPrice ?? 1;
   userItem.getElementsByTagName('input')[0].disabled = item.askingPrice > 0;
   userItem.getElementsByTagName('button')[0].disabled = item.askingPrice > 0;
-  userItem.getElementsByTagName('p')[0].onclick = async () => {
+  userItem.getElementsByTagName('button')[0].onclick = async () => {
     user = await Moralis.User.current();
     if (!user) {
       login();
@@ -261,9 +262,9 @@ renderUserItem = (item) => {
 renderItem = (item) => {
   const itemForSale = marketplaceItemTemplate.cloneNode(true);
   if (item.sellerAvatar) {
-    itemForSale.getElementsByTagName('img')[0].src = item.sellerAvatar.url();
-    itemForSale.getElementsByTagName('img')[0].alt = item.sellerUsername;
-    itemForSale.getElementsByTagName('span')[0].alt = item.sellerUsername;
+    // itemForSale.getElementsByTagName('img')[0].src = item.sellerAvatar.url();
+    // itemForSale.getElementsByTagName('img')[0].alt = item.sellerUsername;
+    // itemForSale.getElementsByTagName('span')[0].alt = item.sellerUsername;
   }
 
   itemForSale.getElementsByTagName('img')[1].src = item.image;
